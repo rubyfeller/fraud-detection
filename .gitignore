@@ -1,0 +1,17 @@
+# Virtual environments
+venv/
+
+# Compiled Python files
+*.pyc
+__pycache__/
+
+# Database files
+*.db
+*.sqlite
+
+# IDE/Editor files
+.vscode/
+.idea/
+
+# MacOS system files
+.DS_Store
