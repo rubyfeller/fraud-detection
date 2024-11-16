@@ -21,14 +21,18 @@ import {
     Pie,
     Cell,
     ResponsiveContainer,
+    LineChart,
+    Line,
 } from 'recharts';
-import {Transaction, ChartDataPoint, PieChartDataPoint} from '@/types/transaction';
+import {Transaction, Pagination, ChartDataPoint, PieChartDataPoint, LineChartDataPoint} from '@/types/transaction';
 import {Upload} from 'lucide-react';
 
 const FraudDashboard: React.FC = () => {
     const [transactions, setTransactions] = useState<Transaction[]>([]);
+    const [pagination, setPagination] = useState<Pagination | null>(null);
     const [barChartData, setBarChartData] = useState<ChartDataPoint[]>([]);
     const [pieChartData, setPieChartData] = useState<PieChartDataPoint[]>([]);
+    const [lineChartData, setLineChartData] = useState<LineChartDataPoint[]>([]);
     const [error, setError] = useState<string>('');
     const [isLoading, setIsLoading] = useState<boolean>(false);
 
@@ -37,8 +41,9 @@ const FraudDashboard: React.FC = () => {
             try {
                 const response = await fetch(process.env.NEXT_PUBLIC_API_URL + '/transactions');
                 const data = await response.json();
-                setTransactions(data);
-                updateChartData(data);
+                setTransactions(data.data || []);
+                setPagination(data.pagination);
+                updateChartData(data.data || []);
             } catch (err) {
                 setError(`Failed to fetch transactions: ${err instanceof Error ? err.message : 'Unknown error'}`);
             }
@@ -71,8 +76,17 @@ const FraudDashboard: React.FC = () => {
             {name: 'Fraudulent', value: data.filter(t => t.prediction === 1).length, color: '#ff8042'},
         ];
 
+        const lineData = data.reduce((acc: LineChartDataPoint[], transaction) => {
+            acc.push({
+                oldbalanceOrg: transaction.oldbalanceOrg,
+                oldbalanceDest: transaction.oldbalanceDest,
+            });
+            return acc;
+        }, []);
+
         setBarChartData(barData);
         setPieChartData(pieData);
+        setLineChartData(lineData);
     };
 
     const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -86,17 +100,17 @@ const FraudDashboard: React.FC = () => {
         setError('');
 
         try {
-            const uploadResponse = await fetch('http://127.0.0.1:8000/predict_batch', {
+            const uploadResponse = await fetch(process.env.NEXT_PUBLIC_API_URL + '/predict_batch', {
                 method: 'POST',
                 body: formData,
             });
 
             if (!uploadResponse.ok) throw new Error('Upload failed');
 
-            const predictionsResponse = await fetch('http://127.0.0.1:8000/transactions');
+            const predictionsResponse = await fetch(process.env.NEXT_PUBLIC_API_URL + '/transactions');
             const data = await predictionsResponse.json();
-            setTransactions(data);
-            updateChartData(data);
+            setTransactions(data.data || []);
+            updateChartData(data.data || []);
         } catch (err) {
             setError(`Failed to process file: ${err instanceof Error ? err.message : 'Unknown error'}`);
         } finally {
@@ -115,6 +129,9 @@ const FraudDashboard: React.FC = () => {
                 <CardHeader>
                     <CardTitle>Fraud Detection Dashboard</CardTitle>
                 </CardHeader>
+                <CardContent>Summary of the data will be shown here. For example:</CardContent>
+                <CardContent>50% of all transactions are fraud. The average transfer amount is $150. The median is $50.
+                    0 debit transactions are fraud.</CardContent>
                 <CardContent>
                     <div className="space-y-4">
                         {/* File Upload */}
@@ -166,11 +183,9 @@ const FraudDashboard: React.FC = () => {
                                 {transactions.map((transaction, index) => (
                                     <tr key={index}>
                                         <td className="p-2 border">{transaction.step}</td>
-                                        <td className="p-2 border">${transaction.amount.toLocaleString()}</td>
-                                        <td className="p-2 border">
-                                            {transaction.prediction === 0 ? 'Legitimate' : 'Fraudulent'}
-                                        </td>
-                                        <td className="p-2 border">{transaction.type.toLocaleLowerCase()}</td>
+                                        <td className="p-2 border">{transaction.amount}</td>
+                                        <td className="p-2 border">{transaction.prediction}</td>
+                                        <td className="p-2 border">{transaction.type}</td>
                                     </tr>
                                 ))}
                                 </tbody>
@@ -191,23 +206,17 @@ const FraudDashboard: React.FC = () => {
                                             <CardTitle>Transactions by Step</CardTitle>
                                         </CardHeader>
                                         <CardContent>
-                                            {barChartData.length > 0 ? (
-                                                <ResponsiveContainer width="100%" height={300}>
-                                                    <BarChart data={barChartData}>
-                                                        <CartesianGrid strokeDasharray="3 3"/>
-                                                        <XAxis dataKey="step"/>
-                                                        <YAxis/>
-                                                        <Tooltip/>
-                                                        <Legend/>
-                                                        <Bar dataKey="legitimate" stackId="a" fill="#82ca9d"
-                                                             name="Legitimate"/>
-                                                        <Bar dataKey="fraudulent" stackId="a" fill="#ff8042"
-                                                             name="Fraudulent"/>
-                                                    </BarChart>
-                                                </ResponsiveContainer>
-                                            ) : (
-                                                <div className="text-center text-gray-500">No data available</div>
-                                            )}
+                                            <ResponsiveContainer width="100%" height={300}>
+                                                <BarChart data={barChartData}>
+                                                    <CartesianGrid strokeDasharray="3 3"/>
+                                                    <XAxis dataKey="step"/>
+                                                    <YAxis/>
+                                                    <Tooltip/>
+                                                    <Legend/>
+                                                    <Bar dataKey="legitimate" fill="#82ca9d"/>
+                                                    <Bar dataKey="fraudulent" fill="#ff8042"/>
+                                                </BarChart>
+                                            </ResponsiveContainer>
                                         </CardContent>
                                     </Card>
 
@@ -216,30 +225,44 @@ const FraudDashboard: React.FC = () => {
                                             <CardTitle>Transaction Distribution</CardTitle>
                                         </CardHeader>
                                         <CardContent>
-                                            {pieChartData.length > 0 ? (
-                                                <ResponsiveContainer width="100%" height={300}>
-                                                    <PieChart>
-                                                        <Pie
-                                                            data={pieChartData}
-                                                            cx="50%"
-                                                            cy="50%"
-                                                            labelLine={false}
-                                                            label={({percent}) => `${(percent * 100).toFixed(0)}%`}
-                                                            outerRadius={80}
-                                                            fill="#8884d8"
-                                                            dataKey="value"
-                                                        >
-                                                            {pieChartData.map((entry, index) => (
-                                                                <Cell key={`cell-${index}`} fill={entry.color}/>
-                                                            ))}
-                                                        </Pie>
-                                                        <Tooltip/>
-                                                        <Legend/>
-                                                    </PieChart>
-                                                </ResponsiveContainer>
-                                            ) : (
-                                                <div className="text-center text-gray-500">No data available</div>
-                                            )}
+                                            <ResponsiveContainer width="100%" height={300}>
+                                                <PieChart>
+                                                    <Pie
+                                                        data={pieChartData}
+                                                        dataKey="value"
+                                                        nameKey="name"
+                                                        cx="50%"
+                                                        cy="50%"
+                                                        outerRadius={100}
+                                                        fill="#8884d8"
+                                                        label
+                                                    >
+                                                        {pieChartData.map((entry, index) => (
+                                                            <Cell key={`cell-${index}`} fill={entry.color}/>
+                                                        ))}
+                                                    </Pie>
+                                                    <Tooltip/>
+                                                </PieChart>
+                                            </ResponsiveContainer>
+                                        </CardContent>
+                                    </Card>
+
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle>Balance Distribution</CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <ResponsiveContainer width="100%" height={300}>
+                                                <LineChart data={lineChartData}>
+                                                    <CartesianGrid strokeDasharray="3 3"/>
+                                                    <XAxis dataKey="oldbalanceOrg"/>
+                                                    <YAxis/>
+                                                    <Tooltip/>
+                                                    <Legend/>
+                                                    <Line type="monotone" dataKey="oldbalanceOrg" stroke="#8884d8"/>
+                                                    <Line type="monotone" dataKey="oldbalanceDest" stroke="#82ca9d"/>
+                                                </LineChart>
+                                            </ResponsiveContainer>
                                         </CardContent>
                                     </Card>
                                 </div>

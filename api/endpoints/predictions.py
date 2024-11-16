@@ -1,0 +1,150 @@
+import asyncio
+import logging
+from http.client import HTTPException
+from io import StringIO
+import pandas as pd
+from fastapi import APIRouter, Depends, UploadFile, File
+from sqlalchemy.orm import Session
+from api.database import get_db
+from api.database import Transaction as DBTransaction, Prediction as DBPrediction
+from api.schemas import TransactionInput
+from models.train_paysim_model import FraudDetectionModel
+
+router = APIRouter()
+
+CHUNK_SIZE = 1000  # Process 1000 rows at a time
+MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB limit
+MAX_ROWS = 100000  # Maximum number of rows allowed
+
+model = FraudDetectionModel()
+model.load_model("models/fraud_model.pkl")
+
+
+async def process_chunk(chunk: pd.DataFrame, db: Session, model: FraudDetectionModel):
+    predictions = []
+
+    # Bulk insert transactions
+    db_transactions = [DBTransaction(**row) for _, row in chunk.iterrows()]
+    db.add_all(db_transactions)
+    db.commit()
+
+    # Refresh transactions to get the auto-incremented IDs
+    for transaction in db_transactions:
+        db.refresh(transaction)
+
+    # Get transaction IDs
+    transaction_ids = [t.id for t in db_transactions]
+
+    # Make predictions one by one
+    batch_predictions = []
+    for _, row in chunk.iterrows():
+        pred = model.predict_proba(row.to_dict())
+        logging.info(f"Prediction for transaction: {pred}")
+        batch_predictions.append(pred)
+
+    # Bulk insert predictions
+    db_predictions = [
+        DBPrediction(
+            transaction_id=tid,
+            prediction=pred['prediction'],
+            probability=pred['probability']
+        )
+        for tid, pred in zip(transaction_ids, batch_predictions)
+    ]
+    db.add_all(db_predictions)
+    db.commit()
+
+    # Prepare response
+    for t, p in zip(db_transactions, batch_predictions):
+        manual_review = p['prediction'] == 0 and 0.45 <= p['probability'] <= 0.55
+        predictions.append({
+            'id': t.id,
+            'step': t.step,
+            'amount': t.amount,
+            'type': t.type,
+            'oldbalanceOrg': t.oldbalanceOrg,
+            'newbalanceOrig': t.newbalanceOrig,
+            'oldbalanceDest': t.oldbalanceDest,
+            'newbalanceDest': t.newbalanceDest,
+            'prediction': p['prediction'],
+            'probability': p['probability'],
+            'manual_review': manual_review
+        })
+
+    return predictions
+
+
+@router.post("/predict")
+async def predict(transaction: TransactionInput, db: Session = Depends(get_db)):
+    # Save transaction to database
+    db_transaction = DBTransaction(**transaction.dict())
+    db.add(db_transaction)
+    db.commit()
+    db.refresh(db_transaction)
+
+    # Make prediction
+    result = model.predict_proba(transaction.dict())
+
+    # Check if manual review is needed
+    manual_review = result['prediction'] == 0 and 0.45 <= result['probability'] <= 0.55
+
+    # Save prediction to database
+    db_prediction = DBPrediction(
+        transaction_id=db_transaction.id,
+        prediction=result['prediction'],
+        probability=result['probability']
+    )
+    db.add(db_prediction)
+    db.commit()
+
+    # Prepare response
+    response = transaction.dict()
+    response.update({
+        'id': db_transaction.id,
+        'prediction': result['prediction'],
+        'probability': result['probability'],
+        'manual_review': manual_review
+    })
+
+    return response
+
+
+@router.post("/predict_batch")
+async def predict_batch(
+        file: UploadFile = File(...),
+        db: Session = Depends(get_db)
+):
+    # Check file size
+    file.file.seek(0, 2)
+    size = file.file.tell()
+    if size > MAX_FILE_SIZE:
+        raise HTTPException(status_code=400,
+                            detail=f"File size exceeds maximum limit of {MAX_FILE_SIZE / 1024 / 1024}MB")
+    file.file.seek(0)
+
+    # Read file in chunks
+    content = await file.read()
+    df = pd.read_csv(StringIO(content.decode('utf-8')))
+
+    # Validate row count
+    if len(df) > MAX_ROWS:
+        raise HTTPException(status_code=400, detail=f"Number of rows exceeds maximum limit of {MAX_ROWS}")
+
+    # Validate columns
+    required_columns = ['step', 'type', 'amount', 'oldbalanceOrg', 'newbalanceOrig', 'oldbalanceDest', 'newbalanceDest']
+    if not all(column in df.columns for column in required_columns):
+        raise HTTPException(status_code=400, detail="Missing required columns in the uploaded file")
+
+    # Process in chunks
+    chunks = [df[i:i + CHUNK_SIZE] for i in range(0, len(df), CHUNK_SIZE)]
+    predictions = []
+
+    # Process chunks concurrently
+    tasks = [process_chunk(chunk, db, model) for chunk in chunks]
+    chunk_results = await asyncio.gather(*tasks)
+
+    # Combine results
+    for result in chunk_results:
+        predictions.extend(result)
+
+    return predictions

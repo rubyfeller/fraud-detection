@@ -12,6 +12,15 @@ interface Transaction {
     manual_review: boolean;
 }
 
+interface Pagination {
+    total_items: number;
+    total_pages: number;
+    current_page: number;
+    page_size: number;
+    has_next: boolean;
+    has_previous: boolean;
+}
+
 interface ChartDataPoint {
     step: number;
     legitimate: number;
@@ -24,4 +33,9 @@ interface PieChartDataPoint {
     color: string;
 }
 
-export type {Transaction, ChartDataPoint, PieChartDataPoint};
+export interface LineChartDataPoint {
+    oldbalanceOrg: number;
+    oldbalanceDest: number;
+}
+
+export type {Transaction, Pagination, ChartDataPoint, PieChartDataPoint};

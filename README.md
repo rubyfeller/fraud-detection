@@ -71,6 +71,12 @@ To set up the project, follow these steps:
     NEXT_PUBLIC_API_URL=http://localhost:8000
     ```
 
+## Running tests
+To run the tests, use the following command:
+```bash
+python -m pytest
+```
+
 ## Usage
 ### Backend
 The backend provides API endpoints for making predictions and retrieving transaction data.
