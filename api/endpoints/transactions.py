@@ -13,7 +13,7 @@ router = APIRouter()
 async def get_transactions(
         db: Session = Depends(get_db),
         page: int = Query(default=1, ge=1),
-        page_size: int = Query(default=100, ge=1, le=1000)
+        page_size: int = Query(default=15, ge=1, le=1000)
 ):
     # Get total count for pagination metadata
     total_count = db.query(DBTransaction).count()
@@ -35,6 +35,11 @@ async def get_transactions(
 
     # Create prediction dictionary
     prediction_dict = {pred.transaction_id: pred for pred in predictions}
+
+    # Validate predictions
+    for pred in predictions:
+        if pred.transaction_id not in transaction_ids:
+            raise ValueError(f"Prediction {pred.transaction_id} not found in transactions")
 
     # Combine transactions and predictions
     response_data = [

@@ -20,6 +20,24 @@ model = FraudDetectionModel()
 model.load_model("models/fraud_model.pkl")
 
 
+async def process_file_in_background(db: Session, content: str):
+    df = pd.read_csv(StringIO(content))
+
+    # Process in chunks
+    chunks = [df[i:i + CHUNK_SIZE] for i in range(0, len(df), CHUNK_SIZE)]
+    predictions = []
+
+    # Process chunks concurrently
+    tasks = [process_chunk(chunk, db, model) for chunk in chunks]
+    chunk_results = await asyncio.gather(*tasks)
+
+    # Combine results
+    for result in chunk_results:
+        predictions.extend(result)
+
+    return predictions
+
+
 async def process_chunk(chunk: pd.DataFrame, db: Session, model: FraudDetectionModel):
     predictions = []
 
@@ -66,8 +84,8 @@ async def process_chunk(chunk: pd.DataFrame, db: Session, model: FraudDetectionM
             'newbalanceOrig': t.newbalanceOrig,
             'oldbalanceDest': t.oldbalanceDest,
             'newbalanceDest': t.newbalanceDest,
-            'prediction': p['prediction'],
-            'probability': p['probability'],
+            'prediction': p.get('prediction', 0),
+            'probability': p.get('probability', 0.0),
             'manual_review': manual_review
         })
 
@@ -77,13 +95,13 @@ async def process_chunk(chunk: pd.DataFrame, db: Session, model: FraudDetectionM
 @router.post("/predict")
 async def predict(transaction: TransactionInput, db: Session = Depends(get_db)):
     # Save transaction to database
-    db_transaction = DBTransaction(**transaction.dict())
+    db_transaction = DBTransaction(**transaction.model_dump())
     db.add(db_transaction)
     db.commit()
     db.refresh(db_transaction)
 
     # Make prediction
-    result = model.predict_proba(transaction.dict())
+    result = model.predict_proba(transaction.model_dump())
 
     # Check if manual review is needed
     manual_review = result['prediction'] == 0 and 0.45 <= result['probability'] <= 0.55
@@ -98,7 +116,7 @@ async def predict(transaction: TransactionInput, db: Session = Depends(get_db)):
     db.commit()
 
     # Prepare response
-    response = transaction.dict()
+    response = transaction.model_dump()
     response.update({
         'id': db_transaction.id,
         'prediction': result['prediction'],
@@ -135,16 +153,7 @@ async def predict_batch(
     if not all(column in df.columns for column in required_columns):
         raise HTTPException(status_code=400, detail="Missing required columns in the uploaded file")
 
-    # Process in chunks
-    chunks = [df[i:i + CHUNK_SIZE] for i in range(0, len(df), CHUNK_SIZE)]
-    predictions = []
+    # Add background task to process file
+    predictions = await process_file_in_background(db, content.decode('utf-8'))
 
-    # Process chunks concurrently
-    tasks = [process_chunk(chunk, db, model) for chunk in chunks]
-    chunk_results = await asyncio.gather(*tasks)
-
-    # Combine results
-    for result in chunk_results:
-        predictions.extend(result)
-
-    return predictions
+    return {"message": "File processed successfully", "predictions": predictions}
