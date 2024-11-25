@@ -1,9 +1,8 @@
 import asyncio
 import logging
-from http.client import HTTPException
 from io import StringIO
 import pandas as pd
-from fastapi import APIRouter, Depends, UploadFile, File
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from sqlalchemy.orm import Session
 from api.database import get_db
 from api.database import Transaction as DBTransaction, Prediction as DBPrediction
@@ -132,6 +131,12 @@ async def predict_batch(
         file: UploadFile = File(...),
         db: Session = Depends(get_db)
 ):
+    if not file:
+        raise HTTPException(status_code=400, detail="No file uploaded")
+
+    if file.content_type != 'text/csv':
+        raise HTTPException(status_code=400, detail="Only CSV files are supported")
+
     # Check file size
     file.file.seek(0, 2)
     size = file.file.tell()
