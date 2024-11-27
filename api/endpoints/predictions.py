@@ -109,7 +109,8 @@ async def predict(transaction: TransactionInput, db: Session = Depends(get_db)):
     db_prediction = DBPrediction(
         transaction_id=db_transaction.id,
         prediction=result['prediction'],
-        probability=result['probability']
+        probability=result['probability'],
+        manual_review=manual_review
     )
     db.add(db_prediction)
     db.commit()
@@ -162,3 +163,17 @@ async def predict_batch(
     predictions = await process_file_in_background(db, content.decode('utf-8'))
 
     return {"message": "File processed successfully", "predictions": predictions}
+
+
+@router.put("/review/{prediction_id}")
+async def review_prediction(prediction_id: int, reviewed_prediction: int, db: Session = Depends(get_db)):
+    db_prediction = db.query(DBPrediction).filter(DBPrediction.id == prediction_id).first()
+    if not db_prediction:
+        raise HTTPException(status_code=404, detail="Prediction not found")
+
+    db_prediction.reviewed = True
+    db_prediction.reviewed_prediction = reviewed_prediction
+    db.commit()
+    db.refresh(db_prediction)
+
+    return {"message": "Review status updated", "prediction": db_prediction}

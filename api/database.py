@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, Float, String
+from sqlalchemy import create_engine, Column, Integer, Float, String, Boolean
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -29,6 +29,9 @@ class Prediction(Base):
     transaction_id = Column(Integer)
     prediction = Column(Integer)
     probability = Column(Float)
+    manual_review = Column(Boolean, default=False)
+    reviewed = Column(Boolean, default=False)
+    reviewed_prediction = Column(Integer, nullable=True)
 
 
 Base.metadata.create_all(bind=engine)
