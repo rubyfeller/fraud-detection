@@ -1,3 +1,5 @@
+from typing import Optional
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from api.database import get_db
@@ -13,33 +15,29 @@ router = APIRouter()
 async def get_transactions(
         db: Session = Depends(get_db),
         page: int = Query(default=1, ge=1),
-        page_size: int = Query(default=15, ge=1, le=1000)
+        page_size: int = Query(default=15, ge=1, le=1000),
+        manual_review: Optional[bool] = Query(default=None)
 ):
+    query = db.query(DBTransaction).join(DBPrediction, DBTransaction.id == DBPrediction.transaction_id)
+
+    if manual_review is not None:
+        query = query.filter(DBPrediction.manual_review == manual_review)
+
     # Get total count for pagination metadata
-    total_count = db.query(DBTransaction).count()
+    total_count = query.count()
 
     # Calculate offset and limit
     offset = (page - 1) * page_size
 
     # Get paginated transactions
-    transactions = db.query(DBTransaction) \
-        .offset(offset) \
-        .limit(page_size) \
-        .all()
+    transactions = query.offset(offset).limit(page_size).all()
 
     # Get corresponding predictions
     transaction_ids = [t.id for t in transactions]
-    predictions = db.query(DBPrediction) \
-        .filter(DBPrediction.transaction_id.in_(transaction_ids)) \
-        .all()
+    predictions = db.query(DBPrediction).filter(DBPrediction.transaction_id.in_(transaction_ids)).all()
 
     # Create prediction dictionary
     prediction_dict = {pred.transaction_id: pred for pred in predictions}
-
-    # Validate predictions
-    for pred in predictions:
-        if pred.transaction_id not in transaction_ids:
-            raise ValueError(f"Prediction {pred.transaction_id} not found in transactions")
 
     # Combine transactions and predictions
     response_data = [
@@ -54,9 +52,9 @@ async def get_transactions(
             newbalanceDest=transaction.newbalanceDest,
             prediction=prediction_dict[transaction.id].prediction if transaction.id in prediction_dict else None,
             probability=prediction_dict[transaction.id].probability if transaction.id in prediction_dict else None,
-            manual_review=prediction_dict[transaction.id].prediction == 0 and
-                          0.45 <= prediction_dict[transaction.id].probability <= 0.55
-            if transaction.id in prediction_dict else None
+            manual_review=prediction_dict[transaction.id].manual_review if transaction.id in prediction_dict else None,
+            reviewed_prediction=prediction_dict[
+                transaction.id].reviewed_prediction if transaction.id in prediction_dict else 0
         ) for transaction in transactions
     ]
 

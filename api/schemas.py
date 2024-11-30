@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -23,3 +25,4 @@ class TransactionResponse(BaseModel):
     prediction: int
     probability: float
     manual_review: bool
+    reviewed_prediction: Optional[int] = None

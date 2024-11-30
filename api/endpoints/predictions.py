@@ -64,7 +64,8 @@ async def process_chunk(chunk: pd.DataFrame, db: Session, model: FraudDetectionM
         DBPrediction(
             transaction_id=tid,
             prediction=pred['prediction'],
-            probability=pred['probability']
+            probability=pred['probability'],
+            manual_review=pred['prediction'] == 0 and 0.45 <= pred['probability'] <= 0.55
         )
         for tid, pred in zip(transaction_ids, batch_predictions)
     ]

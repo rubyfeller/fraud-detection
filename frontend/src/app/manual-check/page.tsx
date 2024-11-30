@@ -1,10 +1,10 @@
 import DashboardLayout from "@/components/DashboardLayout";
-import FraudDashboard from "@/components/FraudDashboard";
+import ManualCheck from "@/components/ManualCheck";
 
 export default function Page() {
     return (
         <DashboardLayout>
-            <FraudDashboard/>
+            <ManualCheck/>
         </DashboardLayout>
     )
 }

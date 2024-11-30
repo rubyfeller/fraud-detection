@@ -10,8 +10,28 @@ import {
     CardTitle,
     CardContent,
 } from '@/components/ui/card';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow
+} from "@/components/ui/table";
 import ErrorAlert from "@/components/ui/ErrorAlert";
 import Loading from "@/components/ui/Loading";
+import {Input} from "@/components/ui/input";
+import {Button} from "@/components/ui/button";
+import {
+    ColumnDef,
+    ColumnFiltersState,
+    SortingState,
+    flexRender,
+    getCoreRowModel,
+    getFilteredRowModel,
+    getSortedRowModel,
+    useReactTable,
+} from "@tanstack/react-table";
 import {
     BarChart,
     Bar,
@@ -22,15 +42,78 @@ import {
     Legend,
     ResponsiveContainer,
 } from 'recharts';
-import {Upload} from 'lucide-react';
+import {ArrowUpDown, Upload} from 'lucide-react';
+
+
+const columns: ColumnDef<Transaction>[] = [
+    {
+        accessorKey: "step",
+        header: ({column}) => {
+            return (
+                <Button
+                    variant="ghost"
+                    onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+                >
+                    Step
+                    <ArrowUpDown className="ml-2 h-4 w-4"/>
+                </Button>
+            )
+        }
+    },
+    {
+        accessorKey: "amount",
+        header: ({column}) => {
+            return (
+                <Button
+                    variant="ghost"
+                    onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+                >
+                    Amount
+                    <ArrowUpDown className="ml-2 h-4 w-4"/>
+                </Button>
+            )
+        },
+        cell: ({row}) => `$${row.original.amount.toLocaleString()}`
+    },
+    {
+        accessorKey: "prediction",
+        header: ({column}) => {
+            return (
+                <Button
+                    variant="ghost"
+                    onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+                >
+                    Prediction
+                    <ArrowUpDown className="ml-2 h-4 w-4"/>
+                </Button>
+            )
+        }
+    },
+    {
+        accessorKey: "type",
+        header: ({column}) => {
+            return (
+                <Button
+                    variant="ghost"
+                    onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+                >
+                    Type
+                    <ArrowUpDown className="ml-2 h-4 w-4"/>
+                </Button>
+            )
+        }
+    }
+];
 
 const FraudDashboard: React.FC = () => {
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [analytics, setAnalytics] = useState<any>(null);
     const [pagination, setPagination] = useState<any>(null);
     const [currentPage, setCurrentPage] = useState<number>(1);
+    const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+    const [sorting, setSorting] = useState<SortingState>([]);
 
-    const {data: transactionsData} = useFetchData(`${process.env.NEXT_PUBLIC_API_URL}/transactions?page=${currentPage}`, [currentPage]);
+    const {data: transactionsData} = useFetchData(`${process.env.NEXT_PUBLIC_API_URL}/transactions?page=${currentPage}&manualReview=false`, [currentPage]);
     const {data: analyticsData} = useFetchData(`${process.env.NEXT_PUBLIC_API_URL}/transactions/analytics`, []);
     const {
         handleFileUpload,
@@ -50,6 +133,22 @@ const FraudDashboard: React.FC = () => {
             setAnalytics(analyticsData);
         }
     }, [analyticsData]);
+
+    const table = useReactTable({
+        data: transactions,
+        columns,
+        state: {
+            columnFilters,
+            sorting,
+        },
+        onColumnFiltersChange: setColumnFilters,
+        onSortingChange: setSorting,
+        getCoreRowModel: getCoreRowModel(),
+        getFilteredRowModel: getFilteredRowModel(),
+        getSortedRowModel: getSortedRowModel(),
+        enableGlobalFilter: true,
+    });
+
 
     return (
         <div className="p-4 max-w-6xl mx-auto space-y-4">
@@ -114,34 +213,63 @@ const FraudDashboard: React.FC = () => {
 
                         {fileUploadError && <ErrorAlert error={fileUploadError}/>}
 
-                        {/* Transactions Table */}
-                        <div className="overflow-x-auto">
-                            <table className="w-full border-collapse">
-                                <thead>
-                                <tr>
-                                    <th className="p-2 border text-left">Step</th>
-                                    <th className="p-2 border text-left">Amount</th>
-                                    <th className="p-2 border text-left">Prediction</th>
-                                    <th className="p-2 border text-left">Type</th>
-                                </tr>
-                                </thead>
-                                <tbody>
-                                {transactions.map((transaction: Transaction, index: number) => (
-                                    <tr key={index}>
-                                        <td className="p-2 border">{transaction.step}</td>
-                                        <td className="p-2 border">{transaction.amount}</td>
-                                        <td className="p-2 border">{transaction.prediction}</td>
-                                        <td className="p-2 border">{transaction.type}</td>
-                                    </tr>
-                                ))}
-                                </tbody>
-                            </table>
+                        <div className="mb-4">
+                            <Input
+                                placeholder="Filter transactions..."
+                                value={(table.getState().globalFilter as string) ?? ""}
+                                onChange={(event) => table.setGlobalFilter(event.target.value)}
+                                className="max-w-sm"
+                            />
                         </div>
+
+                        <Table>
+                            <TableHeader>
+                                {table.getHeaderGroups().map((headerGroup) => (
+                                    <TableRow key={headerGroup.id}>
+                                        {headerGroup.headers.map((header) => (
+                                            <TableHead key={header.id}>
+                                                {header.isPlaceholder
+                                                    ? null
+                                                    : flexRender(
+                                                        header.column.columnDef.header,
+                                                        header.getContext()
+                                                    )}
+                                            </TableHead>
+                                        ))}
+                                    </TableRow>
+                                ))}
+                            </TableHeader>
+                            <TableBody>
+                                {table.getRowModel().rows?.length ? (
+                                    table.getRowModel().rows.map((row) => (
+                                        <TableRow
+                                            key={row.id}
+                                            data-state={row.getIsSelected() && "selected"}
+                                        >
+                                            {row.getVisibleCells().map((cell) => (
+                                                <TableCell key={cell.id}>
+                                                    {flexRender(
+                                                        cell.column.columnDef.cell,
+                                                        cell.getContext()
+                                                    )}
+                                                </TableCell>
+                                            ))}
+                                        </TableRow>
+                                    ))
+                                ) : (
+                                    <TableRow>
+                                        <TableCell colSpan={columns.length} className="h-24 text-center">
+                                            No results.
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
 
                         {/* Pagination Controls */}
                         <div className="flex justify-between mt-4">
                             <button
-                                className="px-4 py-2 bg-gray-200 rounded"
+                                className={`px-4 py-2 rounded ${!pagination?.has_previous ? 'bg-gray-300 cursor-not-allowed text-gray-500' : 'bg-gray-200 text-black'}`}
                                 onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                                 disabled={!pagination?.has_previous}
                             >
@@ -153,7 +281,7 @@ const FraudDashboard: React.FC = () => {
                                 <span>Page 1 of 1</span>
                             )}
                             <button
-                                className="px-4 py-2 bg-gray-200 rounded"
+                                className={`px-4 py-2 rounded ${!pagination?.has_next ? 'bg-gray-300 cursor-not-allowed text-gray-500' : 'bg-gray-200 text-black'}`}
                                 onClick={() => setCurrentPage(prev => prev + 1)}
                                 disabled={!pagination?.has_next}
                             >
