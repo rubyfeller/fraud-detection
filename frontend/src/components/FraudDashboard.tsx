@@ -43,6 +43,7 @@ import {
     ResponsiveContainer,
 } from 'recharts';
 import {ArrowUpDown, Upload} from 'lucide-react';
+import PaginationControls from "@/components/PaginationControls";
 
 
 const columns: ColumnDef<Transaction>[] = [
@@ -87,7 +88,8 @@ const columns: ColumnDef<Transaction>[] = [
                     <ArrowUpDown className="ml-2 h-4 w-4"/>
                 </Button>
             )
-        }
+        },
+        cell: ({row}) => row.original.prediction ? "Fraudulent" : "Legitimate"
     },
     {
         accessorKey: "type",
@@ -266,28 +268,8 @@ const FraudDashboard: React.FC = () => {
                             </TableBody>
                         </Table>
 
-                        {/* Pagination Controls */}
-                        <div className="flex justify-between mt-4">
-                            <button
-                                className={`px-4 py-2 rounded ${!pagination?.has_previous ? 'bg-gray-300 cursor-not-allowed text-gray-500' : 'bg-gray-200 text-black'}`}
-                                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                                disabled={!pagination?.has_previous}
-                            >
-                                Previous
-                            </button>
-                            {pagination?.total_pages > 0 ? (
-                                <span>Page {pagination?.current_page} of {pagination?.total_pages}</span>
-                            ) : (
-                                <span>Page 1 of 1</span>
-                            )}
-                            <button
-                                className={`px-4 py-2 rounded ${!pagination?.has_next ? 'bg-gray-300 cursor-not-allowed text-gray-500' : 'bg-gray-200 text-black'}`}
-                                onClick={() => setCurrentPage(prev => prev + 1)}
-                                disabled={!pagination?.has_next}
-                            >
-                                Next
-                            </button>
-                        </div>
+                        {/* Pagination */}
+                        <PaginationControls pagination={pagination} setCurrentPage={setCurrentPage}/>
 
                         {analytics && analytics.summaryStats['totalTransactions'] > 0 && (
                             <div className="grid md:grid-cols-2 gap-4">
