@@ -1,16 +1,19 @@
+import time
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import joblib
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import precision_recall_curve, average_precision_score, roc_auc_score, auc
+from sklearn.metrics import precision_recall_curve, average_precision_score, roc_auc_score, auc, confusion_matrix, \
+    classification_report
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import LinearSVC
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from imblearn.over_sampling import SMOTE
 from imblearn.pipeline import Pipeline as ImbPipeline
+
 
 def main():
     # Step 1: Load and Preprocess Data
@@ -56,8 +59,8 @@ def main():
 
     models = {
         'Random Forest': create_pipeline(RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)),
-        'SVM': create_pipeline(LinearSVC(random_state=42, max_iter=10000)),  # Increased max_iter
-        'Logistic Regression': create_pipeline(LogisticRegression(random_state=42, max_iter=1000))  # Increased max_iter
+        'SVM': create_pipeline(LinearSVC(random_state=42, max_iter=20000, dual='auto')),
+        'Logistic Regression': create_pipeline(LogisticRegression(random_state=42, max_iter=1000))
     }
 
     # Step 3: Model evaluation
@@ -78,23 +81,53 @@ def main():
     best_model.fit(X_train, y_train)
 
     for name, model in models.items():
+        start_time = time.time()
         model.fit(X_train, y_train)
-        y_pred_proba = model.predict_proba(X_test)[:, 1] if hasattr(model, 'predict_proba') else model.decision_function(X_test)
+
+        training_time = time.time() - start_time
+
+        y_pred = model.predict(X_test)
+
+        # False positive calculation
+        cm = confusion_matrix(y_test, y_pred)
+        fp = cm[0, 1]
+        tn = cm[0, 0]
+        fpr = fp / (fp + tn)
+
+        y_pred_proba = model.predict_proba(X_test)[:, 1] if hasattr(model,
+                                                                    'predict_proba') else model.decision_function(
+            X_test)
+
+        # Performance metrics
         roc_auc = roc_auc_score(y_test, y_pred_proba)
         avg_precision = average_precision_score(y_test, y_pred_proba)
         precision, recall, _ = precision_recall_curve(y_test, y_pred_proba)
         auprc = auc(recall, precision)
 
         print(f"\n{name} Performance:")
+        print(f"Training time: {training_time:.2f} seconds")
         print(f"Test set ROC AUC: {roc_auc:.3f}")
         print(f"Test set Average Precision: {avg_precision:.3f}")
         print(f"Test Set AUPRC: {auprc:.3f}")
 
+        # False positive metrics
+        print(f"False Positives: {fp}")
+        print(f"False Positive Rate: {fpr:.5f}")
+        print(classification_report(y_test, y_pred))
+
     # Step 5: Feature Importance (for Random Forest)
     print("\nStep 5: Feature Importance")
 
-    if isinstance(best_model.named_steps['pipeline'].named_steps['classifier'], RandomForestClassifier):
+    try:
         rf_classifier = best_model.named_steps['pipeline'].named_steps['classifier']
+    except KeyError:
+        try:
+            rf_classifier = best_model.named_steps['classifier']
+        except Exception as e:
+            print(f"Could not access RandomForestClassifier: {e}")
+            rf_classifier = None
+
+    if rf_classifier and isinstance(rf_classifier, RandomForestClassifier):
         importances = rf_classifier.feature_importances_
         feature_imp = pd.DataFrame(sorted(zip(importances, features)), columns=['Value', 'Feature'])
 
@@ -106,13 +139,17 @@ def main():
         plt.title('Feature Importances (Random Forest)')
         plt.tight_layout()
         plt.show()
+    else:
+        print("Could not generate feature importance for non-Random Forest model")
 
     # Step 6: Precision-Recall Curve
     print("\nStep 6: Precision-Recall Curve")
 
     plt.figure(figsize=(8, 6))
     for name, model in models.items():
-        y_pred_proba = model.predict_proba(X_test)[:, 1] if hasattr(model, 'predict_proba') else model.decision_function(X_test)
+        y_pred_proba = model.predict_proba(X_test)[:, 1] if hasattr(model,
+                                                                    'predict_proba') else model.decision_function(
+            X_test)
         precision, recall, _ = precision_recall_curve(y_test, y_pred_proba)
         auprc = auc(recall, precision)
         plt.plot(recall, precision, label=f'{name} (AUPRC = {auprc:.2f})')
@@ -127,6 +164,7 @@ def main():
 
     joblib.dump(best_model, "../models/fraud_model.pkl")
     print("Model saved to ../models/fraud_model.pkl")
+
 
 if __name__ == "__main__":
     main()
