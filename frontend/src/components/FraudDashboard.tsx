@@ -89,7 +89,7 @@ const columns: ColumnDef<Transaction>[] = [
                 </Button>
             )
         },
-        cell: ({row}) => row.original.prediction ? "Fraudulent" : "Legitimate"
+        cell: ({row}) => row.original.prediction ? "FRAUDULENT" : "LEGITIMATE"
     },
     {
         accessorKey: "type",

@@ -41,6 +41,8 @@ class FraudDetectionModel:
         fraud_df = df[df['isFraud'] == 1]
         non_fraud_df = df[df['isFraud'] == 0]
 
+        sample_size = min(sample_size, len(non_fraud_df))
+
         # Sample non-fraud cases
         non_fraud_sample = non_fraud_df.sample(n=sample_size, random_state=42)
 
