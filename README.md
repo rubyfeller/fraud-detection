@@ -90,3 +90,26 @@ The backend provides API endpoints for making predictions and retrieving transac
 The frontend provides a user interface for interacting with the fraud detection model.
 
 ![Screenshot of the Fraud Detection Dashboard](/docs/img/dashboard.png "Screenshot of the Fraud Detection Dashboard")
+
+## CI/CD 
+GitHub Actions is used for CI/CD.
+
+The backend API is deployed on AWS Elastic Beanstalk. The frontend is deployed on Vercel.
+
+Elastic Beanstalk uses the Docker image pushed to Docker Hub.
+
+### Secrets
+The following secrets must be set in the GitHub repository settings:
+- `AWS_ACCESS_KEY_ID`: The AWS access key ID.
+- `AWS_SECRET_ACCESS_KEY`: The AWS secret access key.
+- `DOCKER_USERNAME`: The Docker Hub username.
+- `DOCKER_PASSWORD`: The Docker Hub password.
+
+### AWS Deployment Workflow
+The API deployment is automatically triggered when pushing to the `main` branch on the condition that the build and tests of the ``Python application`` workflow pass.
+
+### Vercel Deployment
+The frontend is automatically deployed to Vercel when pushing to the `main` branch. The deployment URL is: [fraud-detection.rubyfeller.nl](https://fraud-detection.rubyfeller.nl)
+
+When using Vercel, please set the `NEXT_PUBLIC_API_URL` environment variable to the production API URL.
+This can be done via the Vercel dashboard or the `vercel env` command.

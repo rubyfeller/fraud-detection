@@ -2,7 +2,7 @@ name: Deploy to Amazon Elastic Beanstalk
 
 on:
   workflow_run:
-    workflows: ["Python App"]
+    workflows: ["Python application"]
     types:
       - completed
 
