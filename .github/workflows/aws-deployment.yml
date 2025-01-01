@@ -46,3 +46,12 @@ jobs:
           eb init -p docker fraud-detection --region us-east-1
           eb create fraud-detection
           eb deploy fraud-detection
+
+      - name: Get Elastic Beanstalk environment URL
+        id: get-url
+        run: |
+          url=$(aws elasticbeanstalk describe-environments --environment-names fraud-detection --query "Environments[0].CNAME" --output text)
+          echo "URL=$url" >> $GITHUB_ENV
+
+      - name: Create .env.production file
+        run: echo "NEXT_PUBLIC_API_URL=https://$URL/api" > ./frontend/.env.production
